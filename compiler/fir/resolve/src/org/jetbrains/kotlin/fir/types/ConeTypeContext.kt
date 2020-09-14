@@ -339,14 +339,24 @@ interface ConeTypeContext : TypeSystemContext, TypeSystemOptimizationContext, Ty
             if (oldArgument !is ConeStarProjection && oldArgument.kind == ProjectionKind.INVARIANT) continue
 
             val parameter = typeConstructor.getParameter(index)
-            val upperBounds = (0 until parameter.upperBoundCount()).mapTo(mutableListOf()) { paramIndex ->
+            val upperBounds = (0 until parameter.upperBoundCount()).mapNotNullTo(mutableListOf()) { paramIndex ->
+                val parameterUpperBound = parameter.getUpperBound(paramIndex)
                 substitutor.safeSubstitute(
-                    this as TypeSystemInferenceExtensionContext, parameter.getUpperBound(paramIndex)
+                    this as TypeSystemInferenceExtensionContext, parameterUpperBound
                 )
             }
 
             if (!oldArgument.isStarProjection() && oldArgument.getVariance() == TypeVariance.OUT) {
                 upperBounds += oldArgument.getType()
+            }
+
+            if (upperBounds.size > 1) {
+                var removed = false
+                upperBounds.removeAll {
+                    val toBeRemoved = !removed && it.isNullableAny()
+                    if (toBeRemoved) removed = true
+                    toBeRemoved
+                }
             }
 
             require(newArgument is ConeCapturedType)
