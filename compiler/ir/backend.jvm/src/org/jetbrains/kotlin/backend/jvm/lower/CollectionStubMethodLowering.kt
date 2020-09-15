@@ -49,24 +49,14 @@ internal class CollectionStubMethodLowering(val context: JvmBackendContext) : Cl
             it.modality == Modality.ABSTRACT && it.isFakeOverride
         }.associateBy { it.toSignature() }
 
-        for (member in methodStubsToGenerate) {
-            val existingMethod = existingMethodsBySignature[member.toSignature()] // TODO KT-41915
+        for ((signature, member) in methodStubsToGenerate) {
+            val existingMethod = existingMethodsBySignature[signature] // TODO KT-41915
             if (existingMethod != null) {
                 // In the case that we find a defined method that matches the stub signature, we add the overridden symbols to that
                 // defined method, so that bridge lowering can still generate correct bridge for that method
                 existingMethod.overriddenSymbols += member.overriddenSymbols
             } else {
-                // Add generated stub, taking into account that 'remove' method is special, because
-                // 'kotlin.collections.MutableCollection<E>#remove' doesn't match 'java.util.Collection<E>#remove'
-                // (1st accepts 'E', 2nd accepts 'java.lang.Object').
-                // In order to generate it correctly, we should:
-                // - collect stub methods to be generated as usual;
-                // - ensure that non-abstract 'remove(E)' (with a specific substituted 'E') function doesn't exist in class;
-                // and then (we are here now):
-                // - replace value parameter type with 'Any?'
-                // (so that the resulting method has JVM descriptor 'remove(Ljava/lang/Object;)Z', and no final bridge is generated).
-                // TODO figure out if there's a nicer way to handle 'remove'
-                irClass.declarations.add(member.hackRemoveMethodIfRequired())
+                irClass.declarations.add(member)
             }
         }
     }
@@ -89,7 +79,16 @@ internal class CollectionStubMethodLowering(val context: JvmBackendContext) : Cl
             parent = irClass
             dispatchReceiverParameter = function.dispatchReceiverParameter?.copyWithSubstitution(this, substitutionMap)
             extensionReceiverParameter = function.extensionReceiverParameter?.copyWithSubstitution(this, substitutionMap)
-            valueParameters = function.valueParameters.map { it.copyWithSubstitution(this, substitutionMap) }
+            if (name.asString() == "remove") {
+                // Note that replacing value parameter types with 'Any?' handles both MutableCollection and MutableMap case:
+                // java.util.Collection<E>#remove has signature 'boolean remove(Object)', and
+                // java.util.Map<K, V>#remove has signature 'V remove(Object)'.
+                valueParameters = function.valueParameters.map {
+                    it.copyWithCustomTypeSubstitution(this) { context.irBuiltIns.anyNType }
+                }
+            } else {
+                valueParameters = function.valueParameters.map { it.copyWithSubstitution(this, substitutionMap) }
+            }
             // Function body consist only of throwing UnsupportedOperationException statement
             body = context.createIrBuilder(function.symbol).irBlockBody {
                 +irCall(
@@ -99,18 +98,6 @@ internal class CollectionStubMethodLowering(val context: JvmBackendContext) : Cl
                 }
             }
         }
-    }
-
-    private fun IrSimpleFunction.hackRemoveMethodIfRequired(): IrSimpleFunction {
-        if (name.asString() == "remove") {
-            // Note that replacing value parameter types with 'Any?' handles both MutableCollection and MutableMap case:
-            // java.util.Collection<E>#remove has signature 'boolean remove(Object)', and
-            // java.util.Map<K, V>#remove has signature 'V remove(Object)'.
-            valueParameters = valueParameters.map {
-                it.copyWithCustomTypeSubstitution(this) { context.irBuiltIns.anyNType }
-            }
-        }
-        return this
     }
 
     // Copy value parameter with type substitution
@@ -157,7 +144,7 @@ internal class CollectionStubMethodLowering(val context: JvmBackendContext) : Cl
     }
 
     // Compute stubs that should be generated, compare based on signature
-    private fun generateRelevantStubMethods(irClass: IrClass): Set<IrSimpleFunction> {
+    private fun generateRelevantStubMethods(irClass: IrClass): Map<String, IrSimpleFunction> {
         val ourStubsForCollectionClasses = collectionStubComputer.stubsForCollectionClasses(irClass)
         val superStubClasses = irClass.superClass?.superClassChain?.map { superClass ->
             collectionStubComputer.stubsForCollectionClasses(superClass).map { it.readOnlyClass }
@@ -174,9 +161,9 @@ internal class CollectionStubMethodLowering(val context: JvmBackendContext) : Cl
         }.flatMap { (readOnlyClass, mutableClass, mutableOnlyMethods) ->
             val substitutionMap = computeSubstitutionMap(readOnlyClass.owner, mutableClass.owner, irClass)
             mutableOnlyMethods.map { function ->
-                createStubMethod(function, irClass, substitutionMap)
+                function.toSignature() to createStubMethod(function, irClass, substitutionMap)
             }
-        }.toHashSet()
+        }.toMap()
     }
 
     private fun Collection<IrType>.findMostSpecificTypeForClass(classifier: IrClassSymbol): IrType {
