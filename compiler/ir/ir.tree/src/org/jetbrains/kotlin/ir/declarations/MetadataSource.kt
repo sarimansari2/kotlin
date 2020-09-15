@@ -11,21 +11,24 @@ import org.jetbrains.kotlin.name.Name
 interface MetadataSource {
     val name: Name?
 
-    abstract class DescriptorBased<D : DeclarationDescriptor> internal constructor(val descriptor: D) : MetadataSource {
-        override val name: Name
-            get() = descriptor.name
-    }
+    interface Class : MetadataSource
+    interface File : MetadataSource
+    interface Function : MetadataSource
+    interface Property : MetadataSource
+}
 
-    class Class(descriptor: ClassDescriptor) : DescriptorBased<ClassDescriptor>(descriptor)
+sealed class DescriptorMetadataSource(open val descriptor: Named?) : MetadataSource {
+    override val name: Name?
+        get() = descriptor?.name
 
-    open class File(val descriptors: List<DeclarationDescriptor>) : MetadataSource {
-        override val name: Name?
-            get() = null
-    }
+    class Class(override val descriptor: ClassDescriptor) : DescriptorMetadataSource(descriptor), MetadataSource.Class
 
-    class Function(descriptor: FunctionDescriptor) : DescriptorBased<FunctionDescriptor>(descriptor)
+    class File(val descriptors: List<DeclarationDescriptor>) : DescriptorMetadataSource(null), MetadataSource.File
 
-    class Property(descriptor: PropertyDescriptor) : DescriptorBased<PropertyDescriptor>(descriptor)
+    class Function(override val descriptor: FunctionDescriptor) : DescriptorMetadataSource(descriptor), MetadataSource.Function
 
-    class LocalDelegatedProperty(descriptor: VariableDescriptorWithAccessors) : DescriptorBased<VariableDescriptorWithAccessors>(descriptor)
+    class Property(override val descriptor: PropertyDescriptor) : DescriptorMetadataSource(descriptor), MetadataSource.Property
+
+    class LocalDelegatedProperty(override val descriptor: VariableDescriptorWithAccessors) : DescriptorMetadataSource(descriptor),
+        MetadataSource.Property
 }
