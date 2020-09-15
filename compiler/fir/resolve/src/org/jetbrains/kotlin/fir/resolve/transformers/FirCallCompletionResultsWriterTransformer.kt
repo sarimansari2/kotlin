@@ -5,6 +5,7 @@
 
 package org.jetbrains.kotlin.fir.resolve.transformers
 
+import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.fir.*
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.diagnostics.ConeSimpleDiagnostic
@@ -394,7 +395,12 @@ class FirCallCompletionResultsWriterTransformer(
                         val typeRef = argument.typeRef as FirResolvedTypeRef
                         buildTypeProjectionWithVariance {
                             source = argument.source
-                            this.typeRef = if (typeRef.type is ConeClassErrorType) typeRef else typeRef.withReplacedConeType(type)
+                            this.typeRef =
+                                if (typeRef.type is ConeClassErrorType) typeRef
+                                else {
+                                    typeRef.withReplacedConeType(type)
+                                        .approximateTypeIfNeeded(session.inferenceComponents.approximator, hideLocalType = false)
+                                }
                             variance = argument.variance
                         }
                     }
@@ -408,7 +414,7 @@ class FirCallCompletionResultsWriterTransformer(
                             source = argument?.source
                             typeRef = buildResolvedTypeRef {
                                 this.type = type
-                            }
+                            }.approximateTypeIfNeeded(session.inferenceComponents.approximator, hideLocalType = false)
                             variance = Variance.INVARIANT
                         }
                     }

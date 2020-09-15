@@ -17,11 +17,11 @@ FILE: intersectionTypes.kt
     }
     public final fun <K> select(x: R|K|, y: R|K|): R|K|
     public final fun test(): R|kotlin/Any| {
-        ^test R|/select|<R|it(A & B)|>(R|/Clazz1.Clazz1|(), R|/Clazz2.Clazz2|())
+        ^test R|/select|<R|kotlin/Any|>(R|/Clazz1.Clazz1|(), R|/Clazz2.Clazz2|())
     }
     public final fun <T> makeNull(x: R|T|): R|T?| {
         ^makeNull Null(null)
     }
     public final fun testNull(): R|kotlin/Any?| {
-        ^testNull R|/makeNull|<R|it(A & B)|>(R|/select|<R|it(A & B)|>(R|/Clazz1.Clazz1|(), R|/Clazz2.Clazz2|()))
+        ^testNull R|/makeNull|<R|kotlin/Any|>(R|/select|<R|kotlin/Any|>(R|/Clazz1.Clazz1|(), R|/Clazz2.Clazz2|()))
     }
